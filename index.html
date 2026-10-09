@@ -114,6 +114,7 @@
   </label>
   <label>Claude API-sleutel <input type="password" id="apiKey" placeholder="sk-ant-…" autocomplete="off"></label>
   <div class="hint" id="keyStatus">Plak je sleutel hierboven; hij wordt automatisch bewaard.</div>
+  <label><button class="icon-btn" id="testBtn" type="button">Test vertaling</button><span class="hint" id="testOut" style="text-align:right"></span></label>
   <label>Claude-model
     <select id="model">
       <option value="claude-haiku-5-5">Haiku (snel, goedkoop)</option>
@@ -378,11 +379,20 @@ Regels:
       let live = "";
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const r = e.results[i];
-        if (r.isFinal) addSentence(r[0].transcript);
+        if (r.isFinal) { addSentence(r[0].transcript); pendingText = ""; }
         else live += r[0].transcript;
       }
+      pendingText = live;
       interim.classList.toggle("empty", !live);
       interim.textContent = live || "…";
+
+      // Safari (iOS) rondt zinnen vaak nooit af. Na een korte stilte, of bij een erg lange zin,
+      // forceren we het einde; de verstane tekst wordt dan in onend als zin vertaald.
+      clearTimeout(silenceTimer);
+      if (live) {
+        if (live.length > 280) forceFinish();
+        else silenceTimer = setTimeout(forceFinish, SILENCE_MS);
+      }
     };
 
     recognition.onerror = e => {
@@ -398,9 +408,30 @@ Regels:
 
     // Chrome stopt na een tijdje vanzelf: herstart zolang we luisteren.
     recognition.onend = () => {
+      clearTimeout(silenceTimer);
+      commitPending();
       if (listening) setTimeout(() => { try { recognition.start(); } catch {} }, isIOS ? 0 : 250);
       else setStatus("Gestopt");
     };
+  }
+
+  // Tekst die wel verstaan is maar nog niet als "klaar" gemarkeerd.
+  let pendingText = "", silenceTimer = null;
+  const SILENCE_MS = 1300;
+
+  function commitPending() {
+    const t = pendingText.trim();
+    pendingText = "";
+    if (t) {
+      addSentence(t);
+      interim.textContent = listening ? "…" : "";
+    }
+  }
+
+  // Herkenning laten stoppen: Chrome levert dan zelf de zin af, Safari via onend → commitPending.
+  function forceFinish() {
+    clearTimeout(silenceTimer);
+    try { recognition.stop(); } catch { commitPending(); }
   }
 
   function restart() { if (listening) { try { recognition.stop(); } catch {} } }
@@ -430,6 +461,18 @@ Regels:
   });
 
   toggle.onclick = () => (listening ? stop() : start());
+
+  // ---------- Test vertaling ----------
+  $("testBtn").onclick = async () => {
+    const out = $("testOut");
+    out.style.color = ""; out.textContent = "Bezig met " + (useClaude() ? "Claude" : "MyMemory") + "…";
+    try {
+      const r = await translate("الحمد لله رب العالمين", "ar", $("tgtLang").value);
+      out.style.color = "#34d399"; out.textContent = "✓ " + r;
+    } catch (e) {
+      out.style.color = "#f87171"; out.textContent = "✗ " + e.message;
+    }
+  };
 
   // ---------- Wissen & opslaan ----------
   $("clearBtn").onclick = () => {
