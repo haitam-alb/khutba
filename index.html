@@ -148,6 +148,9 @@
 (() => {
   const $ = id => document.getElementById(id);
   const feed = $("feed"), interim = $("interim"), statusEl = $("status"), toggle = $("toggle");
+  let recognition = null, listening = false, wakeLock = null;
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 
   // ---------- Instellingen (onthouden in de browser) ----------
   const store = {
@@ -338,9 +341,6 @@ Regels:
 
   // ---------- Spraakherkenning ----------
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  let recognition = null, listening = false, wakeLock = null;
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 
   function setStatus(text, live) { statusEl.textContent = text; statusEl.classList.toggle("live", !!live); }
 
