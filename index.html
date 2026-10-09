@@ -48,19 +48,23 @@
   main {
     flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: .8rem;
   }
-  .card {
-    background: var(--card); padding: .9rem 1rem; border-radius: .6rem;
-    border-left: 4px solid var(--accent); animation: fade .25s ease-out;
+  .row {
+    background: var(--card); padding: .7rem .9rem; border-radius: .6rem;
+    border-left: 3px solid var(--line); animation: fade .25s ease-out;
   }
-  .arabic {
-    direction: rtl; font-family: "Amiri", serif; font-size: calc(var(--fs) * .95);
-    color: var(--sub); line-height: 1.7; margin-bottom: .35rem;
+  .row.live { border-left-color: var(--danger); }
+  .row .ar {
+    direction: rtl; font-family: "Amiri", serif; font-size: calc(var(--fs) * .9);
+    color: var(--sub); line-height: 1.7; margin-bottom: .3rem;
   }
-  .hide-ar .arabic { display: none; }
-  .trans { font-size: var(--fs); line-height: 1.55; }
-  .seg.pending { color: #64748b; }
-  .seg.error { color: var(--err); font-size: .85em; }
-  .tags { display: flex; flex-wrap: wrap; gap: .3rem; margin-bottom: .4rem; }
+  .row .ar .int { opacity: .5; }
+  .hide-ar .row .ar { display: none; }
+  .row .nl { font-size: var(--fs); line-height: 1.5; min-height: 1.2em; }
+  .row .nl.prov { color: #9fb0c8; font-style: italic; }
+  .row .nl.wait { color: #64748b; }
+  .row .nl.error { color: var(--err); font-size: .85em; }
+  .tags { display: flex; flex-wrap: wrap; gap: .3rem; margin-bottom: .35rem; }
+  .tags:empty { display: none; }
   .tag {
     font-size: .72rem; background: rgba(16,185,129,.15); color: var(--ok);
     padding: .15rem .5rem; border-radius: 4px;
@@ -133,12 +137,14 @@
   </label>
   <label>Claude API-sleutel <input type="password" id="apiKey" placeholder="sk-ant-…" autocomplete="off"></label>
   <div class="hint" id="keyStatus"></div>
-  <label>Claude-model
+  <label>Definitieve vertaling
     <select id="model">
-      <option value="claude-haiku-5-5">Haiku (snel, goedkoop)</option>
-      <option value="claude-sonnet-5-5">Sonnet (nauwkeuriger)</option>
+      <option value="claude-haiku-5-5">Haiku (snelst)</option>
+      <option value="claude-sonnet-5-5">Sonnet (nauwkeuriger, ±2 s trager)</option>
     </select>
   </label>
+  <label>Live meelezen <input type="checkbox" id="provOn" checked></label>
+  <div class="hint">Live meelezen toont een voorlopige vertaling (grijs) terwijl de imam nog praat. Zodra de zin af is, komt de definitieve vertaling ervoor in de plaats.</div>
   <label>E-mail voor MyMemory <input type="email" id="email" placeholder="optioneel"></label>
   <label><button class="icon-btn" id="testBtn" type="button">Test alles</button><span class="hint" id="testOut" style="text-align:right"></span></label>
 
@@ -206,6 +212,7 @@
   bind("engine", "engine");
   bind("apiKey", "key", keyStatus("apiKey", "keyStatus", k => k.startsWith("sk-ant-")));
   bind("model", "model");
+  bind("provOn", "prov");
   bind("email", "email");
   bind("fontSize", "fs", el => document.documentElement.style.setProperty("--fs", el.value));
   bind("showAr", "ar", el => feed.classList.toggle("hide-ar", !el.checked));
@@ -256,24 +263,30 @@
   const LANG_NAMES = { nl: "Nederlands", en: "Engels", fr: "Frans", de: "Duits", ar: "Arabisch" };
   const useClaude = () => $("engine").value === "claude" && $("apiKey").value.trim().startsWith("sk-ant-");
 
-  async function translateClaude(text, src, tgt, context, onDelta) {
-    const system =
-`Je bent een live tolk bij een vrijdagpreek (khutba) in een moskee.
-De preek komt binnen in korte fragmenten uit automatische spraakherkenning, vaak midden in een zin. Je krijgt de vorige fragmenten met hun vertaling als context, en daarna één nieuw fragment in het ${LANG_NAMES[src] || src}.
-Vertaal ALLEEN het nieuwe fragment naar vloeiend ${LANG_NAMES[tgt] || tgt}, zo dat het naadloos aansluit op de vorige vertaling (begin dus zonder hoofdletter als de zin doorloopt).
-- Herkenningsfouten mag je stilzwijgend verbeteren als de bedoeling duidelijk is.
+  const RULES = `- Herkenningsfouten mag je stilzwijgend verbeteren als de bedoeling duidelijk is.
 - Herken je een Koranvers, geef dan de gangbare betekenisvertaling met (soera hoofdstuk:vers) erachter, alleen als je het zeker weet.
-- Vaste formules (Bismillah, Amma ba'd, salawat) geef je in hun gebruikelijke weergave.
+- Vaste formules (Bismillah, Amma ba'd, salawat, du'a) geef je in hun gebruikelijke weergave.
 - Laat kernbegrippen als taqwa, iman en sabr staan, met de eerste keer kort de betekenis tussen haakjes.
 - Gebruik "Allah", niet "God", en ﷺ na de naam van de Profeet.
-- Geef alleen de vertaling: geen uitleg, geen aanhalingstekens, niets herhalen uit de context.
-- Is het fragment onverstaanbaar, antwoord dan alleen: …`;
-    const ctx = context.length
-      ? "Vorige fragmenten (context, niet opnieuw vertalen):\n" +
-        context.map(c => "• " + c.original + "\n  → " + (c.translation || "(nog bezig)")).join("\n") + "\n\n"
+- Geef alleen de vertaling: geen uitleg, geen aanhalingstekens, niets uit de context herhalen.
+- Is de tekst onverstaanbaar, antwoord dan alleen: …`;
+
+  // opts: { model, partial, context, signal, onDelta }
+  async function translateClaude(text, src, tgt, opts = {}) {
+    const S = LANG_NAMES[src] || src, T = LANG_NAMES[tgt] || tgt;
+    const system = opts.partial
+      ? `Je bent een live tolk bij een vrijdagpreek (khutba). De imam is nog midden in deze zin (${S}, uit spraakherkenning). Vertaal wat er tot nu toe is naar natuurlijk ${T}. Maak de zin niet zelf af en voeg niets toe.
+${RULES}`
+      : `Je bent een ervaren tolk bij een vrijdagpreek (khutba) in een moskee. Je krijgt de vorige zinnen met hun vertaling als context, en daarna één nieuwe zin in het ${S}, afkomstig uit automatische spraakherkenning.
+Vertaal de nieuwe zin naar vloeiend, natuurlijk ${T} dat een gelovige toehoorder direct begrijpt, en laat hem logisch aansluiten op de vorige zinnen.
+${RULES}`;
+    const ctx = (opts.context || []).length
+      ? "Vorige zinnen (context, niet opnieuw vertalen):\n" +
+        opts.context.map(c => "• " + c.ar + "\n  → " + (c.nl || "…")).join("\n") + "\n\n"
       : "";
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
+      signal: opts.signal,
       headers: {
         "content-type": "application/json",
         "x-api-key": $("apiKey").value.trim(),
@@ -281,8 +294,8 @@ Vertaal ALLEEN het nieuwe fragment naar vloeiend ${LANG_NAMES[tgt] || tgt}, zo d
         "anthropic-dangerous-direct-browser-access": "true"
       },
       body: JSON.stringify({
-        model: $("model").value, max_tokens: 500, stream: true, system,
-        messages: [{ role: "user", content: ctx + "Nieuw fragment:\n" + text }]
+        model: opts.model || $("model").value, max_tokens: 600, stream: true, system,
+        messages: [{ role: "user", content: ctx + (opts.partial ? "Onvolledige zin:\n" : "Nieuwe zin:\n") + text }]
       })
     });
     if (!res.ok) {
@@ -292,7 +305,6 @@ Vertaal ALLEEN het nieuwe fragment naar vloeiend ${LANG_NAMES[tgt] || tgt}, zo d
       if (res.status === 400 && /credit/i.test(data?.error?.message || "")) throw new Error("geen tegoed op je Anthropic-account");
       throw new Error(data?.error?.message || "HTTP " + res.status);
     }
-    // Server-sent events uitlezen: de vertaling verschijnt woord voor woord.
     const reader = res.body.getReader(), dec = new TextDecoder();
     let buf = "", out = "";
     for (;;) {
@@ -303,7 +315,7 @@ Vertaal ALLEEN het nieuwe fragment naar vloeiend ${LANG_NAMES[tgt] || tgt}, zo d
       for (const line of lines) {
         if (!line.startsWith("data:")) continue;
         let ev; try { ev = JSON.parse(line.slice(5)); } catch { continue; }
-        if (ev.type === "content_block_delta" && ev.delta?.type === "text_delta") { out += ev.delta.text; onDelta(out); }
+        if (ev.type === "content_block_delta" && ev.delta?.type === "text_delta") { out += ev.delta.text; opts.onDelta && opts.onDelta(out); }
         else if (ev.type === "error") throw new Error(ev.error?.message || "fout tijdens vertalen");
       }
     }
@@ -325,85 +337,134 @@ Vertaal ALLEEN het nieuwe fragment naar vloeiend ${LANG_NAMES[tgt] || tgt}, zo d
     return out.join(" ");
   }
 
-  async function translate(text, src, tgt, context = [], onDelta = () => {}) {
+  async function translate(text, src, tgt, opts = {}) {
     if (src === tgt) return text;
     try {
-      if (useClaude()) return await translateClaude(text, src, tgt, context, onDelta);
+      if (useClaude()) return await translateClaude(text, src, tgt, opts);
       return await translateMyMemory(text, src, tgt);
     } catch (e) {
+      if (e.name === "AbortError") throw e;
       if (e instanceof TypeError) throw new Error("geen internetverbinding met de vertaaldienst");
       throw e;
     }
   }
 
-  // ---------- Weergave: fragmenten verzamelen in kaartjes ----------
-  // Elk fragment wordt meteen (parallel) vertaald; volgorde blijft goed omdat ieder fragment
-  // een eigen plek in het kaartje heeft. Na een pauze in de preek begint een nieuw kaartje.
-  const transcript = [];
-  let card = null;
+  // ---------- Zinnen opbouwen ----------
+  // Spraakherkenning levert losse stukjes. Die worden verzameld tot één zin (blok onderaan, rode rand).
+  // Tijdens het spreken: voorlopige vertaling van de zin tot nu toe (snel, Haiku).
+  // Zin klaar (leesteken, pauze of te lang): definitieve vertaling van de hele zin, met context.
+  const MAX_WORDS = 28;
+  const history = [];   // afgeronde zinnen: { time, ar, nl }
+  let live = null;      // zin die nu binnenkomt
 
   const nearBottom = () => feed.scrollHeight - feed.scrollTop - feed.clientHeight < 250;
   const scrollDown = force => { if (force || nearBottom()) feed.scrollTop = feed.scrollHeight; };
 
-  function newCard() {
-    const el = document.createElement("div"); el.className = "card";
+  function makeRow() {
+    const row = document.createElement("div"); row.className = "row live";
     const tags = document.createElement("div"); tags.className = "tags";
-    const ar = document.createElement("div"); ar.className = "arabic";
-    const tr = document.createElement("div"); tr.className = "trans";
+    const ar = document.createElement("div"); ar.className = "ar";
+    const arFinal = document.createElement("span"), arInt = document.createElement("span"); arInt.className = "int";
+    ar.append(arFinal, arInt);
+    const nl = document.createElement("div"); nl.className = "nl wait"; nl.textContent = "…";
     if (srcCode() !== "ar") ar.style.direction = "ltr";
-    el.append(tags, ar, tr);
-    feed.insertBefore(el, interim);
-    card = { el, tags, ar, tr, segs: 0, seenTags: new Set() };
+    row.append(tags, ar, nl);
+    const stick = nearBottom();
+    feed.insertBefore(row, interim);
+    interim.style.display = "none";
+    scrollDown(stick);
+    return { row, tags, arFinal, arInt, nl, text: "", seen: new Set(), ctrl: null, timer: null, done: false };
+  }
+  const ensureLive = () => (live ||= makeRow());
+
+  function addTags(L, text) {
+    if (srcCode() !== "ar") return;
+    for (const t of findTerms(text)) {
+      if (L.seen.has(t) || L.seen.size >= 2) continue;
+      L.seen.add(t);
+      const s = document.createElement("span"); s.className = "tag"; s.textContent = t; L.tags.appendChild(s);
+    }
   }
 
-  function addSegment(text) {
-    text = text.trim();
-    if (text.length < 2) return;
-    const stick = nearBottom();
-    if (!card || card.segs >= 6) newCard();
-    card.segs++;
+  function onInterim(text) {
+    text = (text || "").trim();
+    if (!text) { if (live) live.arInt.textContent = ""; return; }
+    const L = ensureLive();
+    L.arInt.textContent = (L.text ? " " : "") + text;
+    scrollDown();
+  }
 
-    card.ar.append((card.ar.textContent ? " " : ""), text);
-    if (srcCode() === "ar") for (const t of findTerms(text)) {
-      if (card.seenTags.has(t) || card.seenTags.size >= 4) continue;
-      card.seenTags.add(t);
-      const s = document.createElement("span"); s.className = "tag"; s.textContent = t; card.tags.appendChild(s);
-    }
-    const span = document.createElement("span"); span.className = "seg pending"; span.textContent = "…";
-    if (card.tr.childNodes.length) card.tr.append(" ");
-    card.tr.append(span);
+  function onFinalFragment(text) {
+    text = (text || "").trim();
+    if (!text) return;
+    const L = ensureLive();
+    L.text = (L.text + " " + text).trim();
+    L.arFinal.textContent = L.text; L.arInt.textContent = "";
+    addTags(L, text);
+    const words = L.text.split(/\s+/).length;
+    if ((/[.!?؟]$/.test(text) && words >= 3) || words >= MAX_WORDS) closeSentence();
+    else scheduleProvisional(L);
+    scrollDown();
+  }
 
-    const context = transcript.slice(-3);
-    const entry = { time: new Date(), original: text, translation: "" };
-    transcript.push(entry);
-    scrollDown(stick);
+  function onPause() { if (live && live.text) closeSentence(); }
 
-    translate(text, srcCode(), $("tgtLang").value, context, partial => {
-      span.classList.remove("pending"); span.textContent = partial; scrollDown();
+  const contextFor = () => history.slice(-4).map(h => ({ ar: h.ar, nl: h.nl }));
+
+  function scheduleProvisional(L) {
+    if (!useClaude() || !$("provOn").checked) return;
+    clearTimeout(L.timer);
+    L.timer = setTimeout(async () => {
+      if (L.done) return;
+      try { L.ctrl && L.ctrl.abort(); } catch {}
+      const ctrl = new AbortController(); L.ctrl = ctrl;
+      try {
+        await translateClaude(L.text, srcCode(), $("tgtLang").value, {
+          model: "claude-haiku-5-5", partial: true, context: contextFor().slice(-2), signal: ctrl.signal,
+          onDelta: t => { if (!L.done && L.ctrl === ctrl) { L.nl.className = "nl prov"; L.nl.textContent = t; scrollDown(); } }
+        });
+      } catch {}
+    }, 120);
+  }
+
+  function closeSentence() {
+    const L = live; live = null;
+    if (!L) return;
+    L.done = true;
+    clearTimeout(L.timer);
+    try { L.ctrl && L.ctrl.abort(); } catch {}
+    L.row.classList.remove("live");
+    L.arInt.remove();
+    const context = contextFor();
+    const entry = { time: new Date(), ar: L.text, nl: "" };
+    history.push(entry);
+    let started = false;
+    translate(L.text, srcCode(), $("tgtLang").value, {
+      context,
+      onDelta: t => {
+        // De voorlopige tekst blijft staan tot de definitieve vertaling hem heeft ingehaald.
+        if (!started && t.length < Math.min(L.nl.textContent.length, 25) && L.nl.classList.contains("prov")) return;
+        started = true; L.nl.className = "nl"; L.nl.textContent = t; scrollDown();
+      }
     }).then(t => {
       t = (t || "").trim();
-      entry.translation = t === "…" ? "" : t;
-      span.classList.remove("pending");
-      if (!entry.translation) span.remove(); else span.textContent = entry.translation;
+      entry.nl = t === "…" ? "" : t;
+      if (!entry.nl) { L.row.remove(); return; }
+      L.nl.className = "nl"; L.nl.textContent = entry.nl;
       scrollDown();
     }).catch(e => {
-      span.classList.remove("pending"); span.classList.add("error");
-      span.textContent = "[vertaling mislukt: " + e.message + "]";
+      L.nl.className = "nl error"; L.nl.textContent = "[vertaling mislukt: " + e.message + "]";
     });
   }
 
-  function endUtterance() { card = null; }
-
-  function showInterim(text) {
-    interim.classList.toggle("empty", !text);
-    interim.style.direction = srcCode() === "ar" && text ? "rtl" : "";
-    interim.textContent = text || (listening ? "…" : "");
-    scrollDown();
+  function resetLive() {
+    if (live && live.text) closeSentence();
+    else if (live) { live.row.remove(); live = null; }
   }
 
   // ---------- Methode 1: Deepgram (microfoon continu open) ----------
   function deepgramEngine() {
-    let stream, ctx, source, proc, mute, ws, closing = false, retry = 0, finals = "", lastSpeech = Date.now();
+    let stream, ctx, source, proc, mute, ws, closing = false, retry = 0;
     const TARGET_RATE = 16000;
 
     function downsample(input, inRate) {
@@ -431,13 +492,10 @@ Vertaal ALLEEN het nieuwe fragment naar vloeiend ${LANG_NAMES[tgt] || tgt}, zo d
         let m; try { m = JSON.parse(ev.data); } catch { return; }
         if (m.type === "Results") {
           const t = (m.channel?.alternatives?.[0]?.transcript || "").trim();
-          if (m.is_final) {
-            if (t) { addSegment(t); lastSpeech = Date.now(); }
-            showInterim("");
-            if (m.speech_final) endUtterance();
-          } else if (t) showInterim(t);
+          if (m.is_final) onFinalFragment(t);
+          else onInterim(t);
         } else if (m.type === "UtteranceEnd") {
-          endUtterance();
+          onPause();
         } else if (m.type === "Error" || m.err_msg) {
           setStatus("Deepgram: " + (m.description || m.err_msg || "fout"), true);
         }
@@ -509,7 +567,7 @@ Vertaal ALLEEN het nieuwe fragment naar vloeiend ${LANG_NAMES[tgt] || tgt}, zo d
     const LOCALE = { "ar": "ar-SA", "ar-MA": "ar-MA", "ar-EG": "ar-EG", "ar-SA": "ar-SA", "nl": "nl-NL" };
     let rec, pending = "", timer = null;
 
-    const commit = () => { const t = pending.trim(); pending = ""; if (t) { addSegment(t); endUtterance(); } showInterim(""); };
+    const commit = () => { const t = pending.trim(); pending = ""; if (t) { onFinalFragment(t); onPause(); } else onInterim(""); };
     const finish = () => { clearTimeout(timer); try { rec.stop(); } catch { commit(); } };
 
     return {
@@ -525,10 +583,10 @@ Vertaal ALLEEN het nieuwe fragment naar vloeiend ${LANG_NAMES[tgt] || tgt}, zo d
           let live = "";
           for (let i = e.resultIndex; i < e.results.length; i++) {
             const r = e.results[i];
-            if (r.isFinal) { addSegment(r[0].transcript); endUtterance(); pending = ""; }
+            if (r.isFinal) { onFinalFragment(r[0].transcript); onPause(); pending = ""; }
             else live += r[0].transcript;
           }
-          pending = live; showInterim(live);
+          pending = live; onInterim(live);
           clearTimeout(timer);
           if (live) { if (live.length > 280) finish(); else timer = setTimeout(finish, 1300); }
         };
@@ -554,7 +612,7 @@ Vertaal ALLEEN het nieuwe fragment naar vloeiend ${LANG_NAMES[tgt] || tgt}, zo d
   async function start() {
     listening = true;
     toggle.textContent = "Stop luisteren"; toggle.classList.add("rec");
-    showInterim("");
+    interim.className = "empty"; interim.textContent = "Luistert… de eerste zin verschijnt zodra de imam begint.";
     activeEngine = pickEngine();
     try {
       await activeEngine.start();
@@ -574,8 +632,7 @@ Vertaal ALLEEN het nieuwe fragment naar vloeiend ${LANG_NAMES[tgt] || tgt}, zo d
     toggle.textContent = "Start luisteren"; toggle.classList.remove("rec");
     try { wakeLock && wakeLock.release(); } catch {}
     wakeLock = null;
-    endUtterance();
-    showInterim("");
+    resetLive();
     if (statusEl.classList.contains("live")) setStatus("Gestopt");
   }
 
@@ -606,17 +663,18 @@ Vertaal ALLEEN het nieuwe fragment naar vloeiend ${LANG_NAMES[tgt] || tgt}, zo d
 
   // ---------- Wissen & downloaden ----------
   $("clearBtn").onclick = () => {
-    if (!transcript.length || confirm("Alle tekst wissen?")) {
-      transcript.length = 0; card = null;
-      feed.querySelectorAll(".card").forEach(c => c.remove());
+    if (!history.length || confirm("Alle tekst wissen?")) {
+      history.length = 0; if (live) { live.row.remove(); live = null; }
+      feed.querySelectorAll(".row").forEach(r => r.remove());
+      interim.style.display = "";
     }
   };
 
   $("saveBtn").onclick = () => {
-    if (!transcript.length) return alert("Er is nog geen khutba-tekst om te downloaden. Je sleutels bewaar je onder Instellingen.");
-    const original = transcript.map(t => t.original).join(" ");
-    const vertaling = transcript.map(t => t.translation).filter(Boolean).join(" ");
-    const blob = new Blob([`Khutba – ${new Date().toLocaleDateString("nl-NL")}\n\nVERTALING\n${vertaling}\n\nORIGINEEL\n${original}\n`], { type: "text/plain" });
+    if (!history.length) return alert("Er is nog geen khutba-tekst om te downloaden. Je sleutels bewaar je onder Instellingen.");
+    const body = history.map(h => `[${h.time.toLocaleTimeString("nl-NL")}]\n${h.ar}\n${h.nl || "(geen vertaling)"}\n`).join("\n");
+    const vertaling = history.map(h => h.nl).filter(Boolean).join(" ");
+    const blob = new Blob([`Khutba – ${new Date().toLocaleDateString("nl-NL")}\n\nVOLLEDIGE VERTALING\n${vertaling}\n\nPER ZIN\n${body}`], { type: "text/plain" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = `khutba-${new Date().toISOString().slice(0, 10)}.txt`;
