@@ -113,6 +113,7 @@
     </select>
   </label>
   <label>Claude API-sleutel <input type="password" id="apiKey" placeholder="sk-ant-…" autocomplete="off"></label>
+  <div class="hint" id="keyStatus">Plak je sleutel hierboven; hij wordt automatisch bewaard.</div>
   <label>Claude-model
     <select id="model">
       <option value="claude-haiku-5-5">Haiku (snel, goedkoop)</option>
@@ -141,7 +142,7 @@
 <footer>
   <button class="icon-btn" id="clearBtn">Wissen</button>
   <button id="toggle">Start luisteren</button>
-  <button class="icon-btn" id="saveBtn">Opslaan</button>
+  <button class="icon-btn" id="saveBtn">Tekst downloaden</button>
 </footer>
 
 <script>
@@ -171,6 +172,16 @@
   bind("email", "email");
   bind("engine", "engine");
   bind("apiKey", "key");
+  // Sleutel direct bij plakken/typen bewaren (op iOS komt "change" pas bij verlaten van het veld) en bevestigen.
+  const keyEl = $("apiKey"), keyStatus = $("keyStatus");
+  const showKeyStatus = () => {
+    const k = keyEl.value.trim();
+    if (!k) { keyStatus.textContent = "Plak je sleutel hierboven; hij wordt automatisch bewaard."; keyStatus.style.color = ""; }
+    else if (!k.startsWith("sk-ant-")) { keyStatus.textContent = "Dit lijkt geen geldige sleutel (hij moet beginnen met sk-ant-)."; keyStatus.style.color = "#f59e0b"; }
+    else { keyStatus.textContent = "✓ Sleutel bewaard op dit apparaat (eindigt op …" + k.slice(-4) + ")"; keyStatus.style.color = "#34d399"; }
+  };
+  keyEl.addEventListener("input", () => { store.set("key", keyEl.value); showKeyStatus(); });
+  showKeyStatus();
   bind("model", "model");
   $("settingsBtn").onclick = () => $("settings").classList.toggle("open");
 
@@ -429,7 +440,7 @@ Regels:
   };
 
   $("saveBtn").onclick = () => {
-    if (!transcript.length) return alert("Er is nog niets om op te slaan.");
+    if (!transcript.length) return alert("Er is nog geen khutba-tekst om te downloaden. Je API-sleutel bewaar je onder Instellingen.");
     const lines = transcript.map(t =>
       `[${t.time.toLocaleTimeString("nl-NL")}]\n${t.original}\n${t.translation || "(geen vertaling)"}\n`);
     const blob = new Blob([`Khutba – ${new Date().toLocaleDateString("nl-NL")}\n\n` + lines.join("\n")], { type: "text/plain" });
