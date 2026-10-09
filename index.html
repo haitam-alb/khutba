@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0b1120">
 <title>Khutba Live Tolk</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Amiri&display=swap" rel="stylesheet">
@@ -14,12 +16,12 @@
     --ok: #34d399; --warn: #f59e0b; --err: #f87171;
     --fs: 1.15rem;
   }
-  * { box-sizing: border-box; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; height: 100%; }
   body {
     background: var(--bg); color: var(--text);
     font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-    display: flex; flex-direction: column; height: 100dvh;
+    display: flex; flex-direction: column; height: 100dvh; overflow: hidden;
   }
   header {
     padding: .8rem 1rem; padding-top: calc(.8rem + env(safe-area-inset-top));
@@ -29,6 +31,7 @@
   header h1 { margin: 0; font-size: 1.05rem; }
   #status { font-size: .78rem; color: var(--sub); }
   #status.live::before { content: "● "; color: var(--danger); }
+  #status.bad { color: var(--err); }
   .icon-btn {
     background: transparent; color: var(--sub); border: 1px solid var(--line);
     border-radius: .5rem; padding: .45rem .7rem; font-size: .85rem; cursor: pointer;
@@ -46,7 +49,8 @@
   }
   .hint { color: var(--sub); font-size: .78rem; line-height: 1.4; }
   main {
-    flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: .8rem;
+    flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: .7rem;
+    -webkit-overflow-scrolling: touch; position: relative;
   }
   .row {
     background: var(--card); padding: .7rem .9rem; border-radius: .6rem;
@@ -71,21 +75,26 @@
   }
   #interim {
     border: 1px dashed var(--line); border-radius: .6rem; padding: .8rem 1rem;
-    color: var(--sub); direction: rtl; font-family: "Amiri", serif;
-    font-size: var(--fs); min-height: 3rem; line-height: 1.7;
+    color: var(--sub); font-size: .9rem; line-height: 1.5;
   }
-  #interim.empty { direction: ltr; font-family: inherit; font-size: .9rem; }
+  #toLive {
+    position: fixed; left: 50%; transform: translateX(-50%);
+    bottom: calc(5.6rem + env(safe-area-inset-bottom)); display: none;
+    background: var(--accent); color: #fff; border: none; border-radius: 999px;
+    padding: .5rem 1rem; font-size: .85rem; font-weight: 600; box-shadow: 0 4px 14px rgba(0,0,0,.4);
+  }
+  #toLive.show { display: block; }
   footer {
     padding: .8rem 1rem calc(.8rem + env(safe-area-inset-bottom));
     background: var(--card); border-top: 1px solid var(--line);
     display: flex; justify-content: center; align-items: center; gap: .6rem;
   }
   #toggle {
-    background: var(--accent); color: #fff; border: none; padding: .85rem 1.6rem;
-    font-size: 1rem; font-weight: 600; border-radius: 999px; cursor: pointer; min-width: 10rem;
+    background: var(--accent); color: #fff; border: none; padding: .85rem 1.4rem;
+    font-size: 1rem; font-weight: 600; border-radius: 999px; cursor: pointer; min-width: 9.5rem;
   }
   #toggle.rec { background: var(--danger); }
-  #level { width: 6px; height: 2.4rem; border-radius: 3px; background: var(--line); position: relative; overflow: hidden; }
+  #level { width: 6px; height: 2.4rem; border-radius: 3px; background: var(--line); position: relative; overflow: hidden; flex: none; }
   #level i { position: absolute; bottom: 0; left: 0; right: 0; height: 0; background: var(--accent); transition: height .1s; }
   @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 </style>
@@ -112,7 +121,7 @@
   <div class="hint" id="dgKeyStatus"></div>
   <label>Gesproken taal
     <select id="srcLang">
-      <option value="ar">Arabisch (Fusha)</option>
+      <option value="ar">Arabisch (Fusha + dialect, aanbevolen)</option>
       <option value="ar-MA">Arabisch (Marokko)</option>
       <option value="ar-EG">Arabisch (Egypte)</option>
       <option value="ar-SA">Arabisch (Golf)</option>
@@ -158,27 +167,40 @@
     </select>
   </label>
   <label>Arabische tekst tonen <input type="checkbox" id="showAr" checked></label>
-  <div class="hint">Sleutels worden alleen op dit apparaat bewaard en gaan rechtstreeks naar Deepgram en Anthropic. Houd het scherm aan: als je telefoon vergrendelt, stopt iOS de microfoon.</div>
+  <div class="hint">Sleutels worden alleen op dit apparaat bewaard en gaan rechtstreeks naar Deepgram en Anthropic. De app houdt het scherm aan; vergrendel je telefoon niet tijdens de khutba, want dan stopt iOS de microfoon.</div>
+  <div class="hint" id="version"></div>
 </section>
 
 <main id="feed">
-  <div id="interim" class="empty">Druk op "Start luisteren" en houd de telefoon richting de luidspreker.</div>
+  <div id="interim">Druk op "Start luisteren" en houd de telefoon richting de luidspreker.</div>
 </main>
+<button id="toLive" type="button">↓ Naar live</button>
 
 <footer>
   <button class="icon-btn" id="clearBtn">Wissen</button>
   <div id="level"><i></i></div>
   <button id="toggle">Start luisteren</button>
-  <button class="icon-btn" id="saveBtn">Tekst downloaden</button>
+  <button class="icon-btn" id="saveBtn">Downloaden</button>
 </footer>
 
 <script>
 (() => {
   "use strict";
+  const VERSION = "3.0 · 9 okt 2026";
   const $ = id => document.getElementById(id);
-  const feed = $("feed"), interim = $("interim"), statusEl = $("status"), toggle = $("toggle"), levelBar = $("level").firstElementChild;
+  const feed = $("feed"), interim = $("interim"), statusEl = $("status"), toggle = $("toggle"),
+        levelBar = $("level").firstElementChild, toLive = $("toLive");
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-  let listening = false, wakeLock = null, activeEngine = null;
+  let listening = false, session = 0, activeEngine = null, ready = false, micLost = false;
+  $("version").textContent = "Versie " + VERSION;
+
+  const setStatus = (text, live, bad) => {
+    statusEl.textContent = text;
+    statusEl.classList.toggle("live", !!live);
+    statusEl.classList.toggle("bad", !!bad);
+  };
 
   // ---------- Instellingen (onthouden op dit apparaat) ----------
   const store = {
@@ -197,17 +219,18 @@
     if (el.tagName === "INPUT" && !isCheck) el.addEventListener("input", save);
     apply && apply(el);
   };
-
   const keyStatus = (inputId, outId, check) => () => {
     const k = $(inputId).value.trim(), out = $(outId);
     if (!k) { out.textContent = "Plak je sleutel hierboven; hij wordt automatisch bewaard."; out.style.color = ""; }
     else if (!check(k)) { out.textContent = "Dit lijkt geen geldige sleutel."; out.style.color = "var(--warn)"; }
     else { out.textContent = "✓ Bewaard op dit apparaat (eindigt op …" + k.slice(-4) + ")"; out.style.color = "var(--ok)"; }
   };
+  // Methode of taal veranderen tijdens het luisteren: spraakherkenning direct herstarten.
+  const restartIfLive = () => { if (ready && listening) restartEngine(); };
 
-  bind("stt", "stt");
+  bind("stt", "stt", restartIfLive);
   bind("dgKey", "dgkey", keyStatus("dgKey", "dgKeyStatus", k => k.length >= 20));
-  bind("srcLang", "src2");
+  bind("srcLang", "src2", restartIfLive);
   bind("tgtLang", "tgt");
   bind("engine", "engine");
   bind("apiKey", "key", keyStatus("apiKey", "keyStatus", k => k.startsWith("sk-ant-")));
@@ -217,12 +240,41 @@
   bind("fontSize", "fs", el => document.documentElement.style.setProperty("--fs", el.value));
   bind("showAr", "ar", el => feed.classList.toggle("hide-ar", !el.checked));
   $("settingsBtn").onclick = () => $("settings").classList.toggle("open");
+  ready = true;
 
-  const setStatus = (text, live) => { statusEl.textContent = text; statusEl.classList.toggle("live", !!live); };
   const srcCode = () => $("srcLang").value.slice(0, 2);
+  const engineLabel = () => (useClaude() ? "Claude" : "MyMemory");
+
+  // ---------- Scherm aan houden ----------
+  // Screen Wake Lock waar mogelijk; op iOS daarnaast een onzichtbare, stille video (betrouwbaar ook als beginscherm-app).
+  const keepAwake = (() => {
+    let lock = null, video = null;
+    async function acquire() {
+      if ("wakeLock" in navigator && (!lock || lock.released)) {
+        try { lock = await navigator.wakeLock.request("screen"); } catch {}
+      }
+      if (isIOS) {
+        if (!video) {
+          video = document.createElement("video");
+          video.setAttribute("playsinline", ""); video.setAttribute("muted", ""); video.muted = true; video.loop = true;
+          video.src = "data:video/mp4;base64,AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAMrbW9vdgAAAGxtdmhkAAAAAAAAAAAAAAAAAAAD6AAAB9AAAQAAAQAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAlV0cmFrAAAAXHRraGQAAAADAAAAAAAAAAAAAAABAAAAAAAAB9AAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAABAAAAAQAAAAAAAkZWR0cwAAABxlbHN0AAAAAAAAAAEAAAfQAAAAAAABAAAAAAHNbWRpYQAAACBtZGhkAAAAAAAAAAAAAAAAAABAAAAAgABVxAAAAAAALWhkbHIAAAAAAAAAAHZpZGUAAAAAAAAAAAAAAABWaWRlb0hhbmRsZXIAAAABeG1pbmYAAAAUdm1oZAAAAAEAAAAAAAAAAAAAACRkaW5mAAAAHGRyZWYAAAAAAAAAAQAAAAx1cmwgAAAAAQAAAThzdGJsAAAAuHN0c2QAAAAAAAAAAQAAAKhhdmMxAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAABAAEABIAAAASAAAAAAAAAABFUxhdmM2MC4zMS4xMDIgbGlieDI2NAAAAAAAAAAAAAAAGP//AAAALmF2Y0MBQsAK/+EAFmdCwArZHsBEAAADAAQAAAMACDxImSABAAVoy4PLIAAAABBwYXNwAAAAAQAAAAEAAAAUYnRydAAAAAAAAApAAAAKQAAAABhzdHRzAAAAAAAAAAEAAAACAABAAAAAABRzdHNzAAAAAAAAAAEAAAABAAAAHHN0c2MAAAAAAAAAAQAAAAEAAAACAAAAAQAAABxzdHN6AAAAAAAAAAAAAAACAAAChgAAAAoAAAAUc3RjbwAAAAAAAAABAAADWwAAAGJ1ZHRhAAAAWm1ldGEAAAAAAAAAIWhkbHIAAAAAAAAAAG1kaXJhcHBsAAAAAAAAAAAAAAAALWlsc3QAAAAlqXRvbwAAAB1kYXRhAAAAAQAAAABMYXZmNjAuMTYuMTAwAAAACGZyZWUAAAKYbWRhdAAAAnAGBf//bNxF6b3m2Ui3lizYINkj7u94MjY0IC0gY29yZSAxNjQgcjMxMDggMzFlMTlmOSAtIEguMjY0L01QRUctNCBBVkMgY29kZWMgLSBDb3B5bGVmdCAyMDAzLTIwMjMgLSBodHRwOi8vd3d3LnZpZGVvbGFuLm9yZy94MjY0Lmh0bWwgLSBvcHRpb25zOiBjYWJhYz0wIHJlZj0zIGRlYmxvY2s9MTowOjAgYW5hbHlzZT0weDE6MHgxMTEgbWU9aGV4IHN1Ym1lPTcgcHN5PTEgcHN5X3JkPTEuMDA6MC4wMCBtaXhlZF9yZWY9MSBtZV9yYW5nZT0xNiBjaHJvbWFfbWU9MSB0cmVsbGlzPTEgOHg4ZGN0PTAgY3FtPTAgZGVhZHpvbmU9MjEsMTEgZmFzdF9wc2tpcD0xIGNocm9tYV9xcF9vZmZzZXQ9LTIgdGhyZWFkcz0xIGxvb2thaGVhZF90aHJlYWRzPTEgc2xpY2VkX3RocmVhZHM9MCBucj0wIGRlY2ltYXRlPTEgaW50ZXJsYWNlZD0wIGJsdXJheV9jb21wYXQ9MCBjb25zdHJhaW5lZF9pbnRyYT0wIGJmcmFtZXM9MCB3ZWlnaHRwPTAga2V5aW50PTI1MCBrZXlpbnRfbWluPTEgc2NlbmVjdXQ9NDAgaW50cmFfcmVmcmVzaD0wIHJjX2xvb2thaGVhZD00MCByYz1jcmYgbWJ0cmVlPTEgY3JmPTIzLjAgcWNvbXA9MC42MCBxcG1pbj0wIHFwbWF4PTY5IHFwc3RlcD00IGlwX3JhdGlvPTEuNDAgYXE9MToxLjAwAIAAAAAOZYiEBb///w9FAAFPf4AAAAAGQZo4CvqA";
+          video.style.cssText = "position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;left:0;bottom:0";
+          document.body.appendChild(video);
+        }
+        try { await video.play(); } catch {}
+      }
+    }
+    function release() {
+      try { lock && lock.release(); } catch {}
+      lock = null;
+      try { video && video.pause(); } catch {}
+    }
+    return { acquire, release };
+  })();
 
   // ---------- Islamitische begrippen ----------
-  const norm = s => s.replace(/[ً-ٰٟـ]/g, "").replace(/[أإآٱ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه");
+  const norm = s => s.replace(/[ً-ٰٟـ]/g, "").replace(/[أإآٱ]/g, "ا")
+                     .replace(/ى/g, "ي").replace(/ة/g, "ه");
   const TERMS = [
     ["بسم الله الرحمن الرحيم", "Bismillah: In de naam van Allah, de Barmhartige, de Genadevolle"],
     ["الحمد لله", "Alhamdulillah: alle lof is aan Allah"],
@@ -232,8 +284,8 @@
     ["اما بعد", "Amma ba'd: en dan…"],
     ["تقوى", "Taqwa: godsbewustzijn"],
     ["توحيد", "Tawhid: de eenheid van Allah"],
-    ["استغفار", "Istighfar: om vergeving vragen"],
     ["استغفر الله", "Astaghfirullah: ik vraag Allah om vergeving"],
+    ["استغفار", "Istighfar: om vergeving vragen"],
     ["صلاه", "Salah: het gebed"],
     ["الزكاه", "Zakah: verplichte armenbelasting"],
     ["الصيام", "Siyam: het vasten"],
@@ -263,61 +315,74 @@
   const LANG_NAMES = { nl: "Nederlands", en: "Engels", fr: "Frans", de: "Duits", ar: "Arabisch" };
   const useClaude = () => $("engine").value === "claude" && $("apiKey").value.trim().startsWith("sk-ant-");
 
+  class TransError extends Error { constructor(msg, retryable) { super(msg); this.retryable = !!retryable; } }
+
   const RULES = `- Herkenningsfouten mag je stilzwijgend verbeteren als de bedoeling duidelijk is.
 - Herken je een Koranvers, geef dan de gangbare betekenisvertaling met (soera hoofdstuk:vers) erachter, alleen als je het zeker weet.
 - Vaste formules (Bismillah, Amma ba'd, salawat, du'a) geef je in hun gebruikelijke weergave.
 - Laat kernbegrippen als taqwa, iman en sabr staan, met de eerste keer kort de betekenis tussen haakjes.
 - Gebruik "Allah", niet "God", en ﷺ na de naam van de Profeet.
+- De imam wisselt Fusha af met dialect (vooral Marokkaans Darija en Egyptisch). Dialectstukken worden door de spraakherkenning vaak als vreemd of verbasterd Standaard-Arabisch geschreven: herken ze aan klank en context en vertaal de bedoeling.
 - Geef alleen de vertaling: geen uitleg, geen aanhalingstekens, niets uit de context herhalen.
-- Is de tekst onverstaanbaar, antwoord dan alleen: …`;
+- Geef altijd je beste vertaling, ook als de tekst rommelig is. Zet een onzeker woord tussen haakjes met een vraagteken, bijvoorbeeld (geduld?). Geef nooit een leeg antwoord.`;
 
   // opts: { model, partial, context, signal, onDelta }
   async function translateClaude(text, src, tgt, opts = {}) {
     const S = LANG_NAMES[src] || src, T = LANG_NAMES[tgt] || tgt;
     const system = opts.partial
-      ? `Je bent een live tolk bij een vrijdagpreek (khutba). De imam is nog midden in deze zin (${S}, uit spraakherkenning). Vertaal wat er tot nu toe is naar natuurlijk ${T}. Maak de zin niet zelf af en voeg niets toe.
-${RULES}`
-      : `Je bent een ervaren tolk bij een vrijdagpreek (khutba) in een moskee. Je krijgt de vorige zinnen met hun vertaling als context, en daarna één nieuwe zin in het ${S}, afkomstig uit automatische spraakherkenning.
-Vertaal de nieuwe zin naar vloeiend, natuurlijk ${T} dat een gelovige toehoorder direct begrijpt, en laat hem logisch aansluiten op de vorige zinnen.
-${RULES}`;
+      ? `Je bent een live tolk bij een vrijdagpreek (khutba). De imam is nog midden in deze zin (${S}, uit spraakherkenning). Vertaal wat er tot nu toe is naar natuurlijk ${T}. Maak de zin niet zelf af en voeg niets toe.\n${RULES}`
+      : `Je bent een ervaren tolk bij een vrijdagpreek (khutba) in een moskee. Je krijgt de vorige zinnen met hun vertaling als context, en daarna één nieuwe zin in het ${S}, afkomstig uit automatische spraakherkenning.\nVertaal de nieuwe zin naar vloeiend, natuurlijk ${T} dat een gelovige toehoorder direct begrijpt, en laat hem logisch aansluiten op de vorige zinnen.\n${RULES}`;
     const ctx = (opts.context || []).length
       ? "Vorige zinnen (context, niet opnieuw vertalen):\n" +
         opts.context.map(c => "• " + c.ar + "\n  → " + (c.nl || "…")).join("\n") + "\n\n"
       : "";
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      signal: opts.signal,
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": $("apiKey").value.trim(),
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true"
-      },
-      body: JSON.stringify({
-        model: opts.model || $("model").value, max_tokens: 600, stream: true, system,
-        messages: [{ role: "user", content: ctx + (opts.partial ? "Onvolledige zin:\n" : "Nieuwe zin:\n") + text }]
-      })
-    });
+    let res;
+    try {
+      res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        signal: opts.signal,
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": $("apiKey").value.trim(),
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true"
+        },
+        body: JSON.stringify({
+          model: opts.model || $("model").value, max_tokens: 600, stream: true, system,
+          messages: [{ role: "user", content: ctx + (opts.partial ? "Onvolledige zin:\n" : "Nieuwe zin:\n") + text }]
+        })
+      });
+    } catch (e) {
+      if (e.name === "AbortError") throw e;
+      throw new TransError("geen internetverbinding", true);
+    }
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      if (res.status === 401) throw new Error("ongeldige Claude-sleutel");
-      if (res.status === 429) throw new Error("te veel verzoeken, even wachten");
-      if (res.status === 400 && /credit/i.test(data?.error?.message || "")) throw new Error("geen tegoed op je Anthropic-account");
-      throw new Error(data?.error?.message || "HTTP " + res.status);
+      const msg = data?.error?.message || "";
+      if (res.status === 401) throw new TransError("ongeldige Claude-sleutel");
+      if (res.status === 400 && /credit/i.test(msg)) throw new TransError("geen tegoed op je Anthropic-account");
+      if (res.status === 429) throw new TransError("te veel verzoeken", true);
+      if (res.status >= 500) throw new TransError("Anthropic is even overbelast", true);
+      throw new TransError(msg || "HTTP " + res.status);
     }
     const reader = res.body.getReader(), dec = new TextDecoder();
     let buf = "", out = "";
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buf += dec.decode(value, { stream: true });
-      const lines = buf.split("\n"); buf = lines.pop();
-      for (const line of lines) {
-        if (!line.startsWith("data:")) continue;
-        let ev; try { ev = JSON.parse(line.slice(5)); } catch { continue; }
-        if (ev.type === "content_block_delta" && ev.delta?.type === "text_delta") { out += ev.delta.text; opts.onDelta && opts.onDelta(out); }
-        else if (ev.type === "error") throw new Error(ev.error?.message || "fout tijdens vertalen");
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split("\n"); buf = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith("data:")) continue;
+          let ev; try { ev = JSON.parse(line.slice(5)); } catch { continue; }
+          if (ev.type === "content_block_delta" && ev.delta?.type === "text_delta") { out += ev.delta.text; opts.onDelta && opts.onDelta(out); }
+          else if (ev.type === "error") throw new TransError(ev.error?.message || "fout tijdens vertalen", ev.error?.type === "overloaded_error");
+        }
       }
+    } catch (e) {
+      if (e.name === "AbortError" || e instanceof TransError) throw e;
+      throw new TransError("verbinding onderbroken", true);
     }
     return out.trim();
   }
@@ -330,35 +395,40 @@ ${RULES}`;
     const out = [];
     for (const p of parts) {
       const url = "https://api.mymemory.translated.net/get?q=" + encodeURIComponent(p) + "&langpair=" + src + "|" + tgt + (email ? "&de=" + encodeURIComponent(email) : "");
-      const data = await (await fetch(url)).json();
-      if (data.responseStatus && Number(data.responseStatus) !== 200) throw new Error(data.responseDetails || "vertaaldienst gaf een fout");
+      let data;
+      try { data = await (await fetch(url)).json(); } catch { throw new TransError("geen internetverbinding", true); }
+      if (data.responseStatus && Number(data.responseStatus) !== 200) throw new TransError(data.responseDetails || "vertaaldienst gaf een fout");
       out.push(data.responseData.translatedText);
     }
     return out.join(" ");
   }
 
+  // Tijdelijke fouten (drukte, netwerkhapering) krijgen tot twee nieuwe pogingen.
   async function translate(text, src, tgt, opts = {}) {
     if (src === tgt) return text;
-    try {
-      if (useClaude()) return await translateClaude(text, src, tgt, opts);
-      return await translateMyMemory(text, src, tgt);
-    } catch (e) {
-      if (e.name === "AbortError") throw e;
-      if (e instanceof TypeError) throw new Error("geen internetverbinding met de vertaaldienst");
-      throw e;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        if (useClaude()) return await translateClaude(text, src, tgt, opts);
+        return await translateMyMemory(text, src, tgt);
+      } catch (e) {
+        if (e.name === "AbortError" || !e.retryable || attempt >= 2) throw e;
+        await sleep(700 * (attempt + 1));
+      }
     }
   }
 
   // ---------- Zinnen opbouwen ----------
-  // Spraakherkenning levert losse stukjes. Die worden verzameld tot één zin (blok onderaan, rode rand).
+  // Spraakherkenning levert losse stukjes; die worden verzameld tot één zin (blok onderaan, rode rand).
   // Tijdens het spreken: voorlopige vertaling van de zin tot nu toe (snel, Haiku).
   // Zin klaar (leesteken, pauze of te lang): definitieve vertaling van de hele zin, met context.
-  const MAX_WORDS = 28;
+  const MAX_WORDS = 24;
   const history = [];   // afgeronde zinnen: { time, ar, nl }
   let live = null;      // zin die nu binnenkomt
 
   const nearBottom = () => feed.scrollHeight - feed.scrollTop - feed.clientHeight < 250;
   const scrollDown = force => { if (force || nearBottom()) feed.scrollTop = feed.scrollHeight; };
+  feed.addEventListener("scroll", () => toLive.classList.toggle("show", listening && !nearBottom()), { passive: true });
+  toLive.onclick = () => { feed.scrollTop = feed.scrollHeight; toLive.classList.remove("show"); };
 
   function makeRow() {
     const row = document.createElement("div"); row.className = "row live";
@@ -410,6 +480,7 @@ ${RULES}`;
   function onPause() { if (live && live.text) closeSentence(); }
 
   const contextFor = () => history.slice(-4).map(h => ({ ar: h.ar, nl: h.nl }));
+  const isEmpty = t => !t || /^[.…\s]*$/.test(t);
 
   function scheduleProvisional(L) {
     if (!useClaude() || !$("provOn").checked) return;
@@ -421,7 +492,7 @@ ${RULES}`;
       try {
         await translateClaude(L.text, srcCode(), $("tgtLang").value, {
           model: "claude-haiku-5-5", partial: true, context: contextFor().slice(-2), signal: ctrl.signal,
-          onDelta: t => { if (!L.done && L.ctrl === ctrl) { L.nl.className = "nl prov"; L.nl.textContent = t; scrollDown(); } }
+          onDelta: t => { if (!L.done && L.ctrl === ctrl && !isEmpty(t)) { L.nl.className = "nl prov"; L.nl.textContent = t; scrollDown(); } }
         });
       } catch {}
     }, 120);
@@ -442,18 +513,26 @@ ${RULES}`;
     translate(L.text, srcCode(), $("tgtLang").value, {
       context,
       onDelta: t => {
+        if (isEmpty(t)) return;
         // De voorlopige tekst blijft staan tot de definitieve vertaling hem heeft ingehaald.
         if (!started && t.length < Math.min(L.nl.textContent.length, 25) && L.nl.classList.contains("prov")) return;
         started = true; L.nl.className = "nl"; L.nl.textContent = t; scrollDown();
       }
     }).then(t => {
       t = (t || "").trim();
-      entry.nl = t === "…" ? "" : t;
-      if (!entry.nl) { L.row.remove(); return; }
-      L.nl.className = "nl"; L.nl.textContent = entry.nl;
+      if (isEmpty(t)) {
+        if (L.nl.classList.contains("prov") && L.nl.textContent.trim()) { entry.nl = L.nl.textContent.trim(); L.nl.className = "nl"; }
+        else { L.nl.className = "nl wait"; L.nl.textContent = "(onverstaanbaar)"; }
+        return;
+      }
+      entry.nl = t;
+      L.nl.className = "nl"; L.nl.textContent = t;
       scrollDown();
     }).catch(e => {
-      L.nl.className = "nl error"; L.nl.textContent = "[vertaling mislukt: " + e.message + "]";
+      // Mislukt: een al zichtbare voorlopige vertaling blijft staan, met een kleine melding erbij.
+      const keep = L.nl.classList.contains("prov") && L.nl.textContent.trim();
+      if (keep) { entry.nl = L.nl.textContent.trim(); L.nl.className = "nl"; L.nl.append(" ⚠"); L.nl.title = e.message; }
+      else { L.nl.className = "nl error"; L.nl.textContent = "[vertaling mislukt: " + e.message + "]"; }
     });
   }
 
@@ -463,187 +542,271 @@ ${RULES}`;
   }
 
   // ---------- Methode 1: Deepgram (microfoon continu open) ----------
+  const WORKLET_SRC = `class Cap extends AudioWorkletProcessor {
+    constructor() { super(); this.b = new Float32Array(2048); this.n = 0; }
+    process(inputs) {
+      const ch = inputs[0] && inputs[0][0];
+      if (ch) for (let i = 0; i < ch.length; i++) { this.b[this.n++] = ch[i]; if (this.n === this.b.length) { this.port.postMessage(this.b.slice(0)); this.n = 0; } }
+      return true;
+    }
+  }
+  registerProcessor("cap", Cap);`;
+
   function deepgramEngine() {
-    let stream, ctx, source, proc, mute, ws, closing = false, retry = 0;
-    const TARGET_RATE = 16000;
+    const TARGET_RATE = 16000, MAX_BACKLOG = TARGET_RATE * 2 * 15; // tot 15 s audio bewaren tijdens herverbinden
+    let stream, ctx, source, node, sink, ws = null, closing = false, everOpened = false, failsBeforeOpen = 0, retryTimer = null;
+    const backlog = []; let backlogBytes = 0;
 
     function downsample(input, inRate) {
       const ratio = inRate / TARGET_RATE, len = Math.floor(input.length / ratio);
       const out = new Int16Array(len);
       for (let i = 0; i < len; i++) {
         const pos = i * ratio, i0 = Math.floor(pos), f = pos - i0;
-        const s = (input[i0] ?? 0) * (1 - f) + (input[i0 + 1] ?? input[i0] ?? 0) * f;
+        const a = input[i0] || 0, b = i0 + 1 < input.length ? input[i0 + 1] : a;
+        const s = a * (1 - f) + b * f;
         out[i] = Math.max(-1, Math.min(1, s)) * 0x7fff;
       }
-      return out;
+      return out.buffer;
     }
+    function flush() {
+      while (backlog.length && ws && ws.readyState === 1) { const b = backlog.shift(); backlogBytes -= b.byteLength; ws.send(b); }
+    }
+    function sendAudio(buf) {
+      if (closing) return;
+      if (ws && ws.readyState === 1) { flush(); ws.send(buf); return; }
+      backlog.push(buf); backlogBytes += buf.byteLength;
+      while (backlogBytes > MAX_BACKLOG) backlogBytes -= backlog.shift().byteLength;
+    }
+    function fatal(msg) { stopAll(); setStatus(msg, false, true); }
 
     function connect() {
-      const lang = $("srcLang").value;
       const params = new URLSearchParams({
-        model: "nova-3", language: lang, encoding: "linear16", sample_rate: String(TARGET_RATE), channels: "1",
+        model: "nova-3", language: $("srcLang").value, encoding: "linear16", sample_rate: String(TARGET_RATE), channels: "1",
         interim_results: "true", punctuate: "true", smart_format: "true",
-        endpointing: "400", utterance_end_ms: "1500", vad_events: "true"
+        endpointing: "300", utterance_end_ms: "1200", vad_events: "true"
       });
-      ws = new WebSocket("wss://api.deepgram.com/v1/listen?" + params, ["token", $("dgKey").value.trim()]);
-      ws.binaryType = "arraybuffer";
-      ws.onopen = () => { retry = 0; setStatus("Live · Deepgram + " + (useClaude() ? "Claude" : "MyMemory"), true); };
-      ws.onmessage = ev => {
+      let sock;
+      try { sock = new WebSocket("wss://api.deepgram.com/v1/listen?" + params, ["token", $("dgKey").value.trim()]); }
+      catch { return fatal("Kan geen verbinding maken met Deepgram"); }
+      ws = sock;
+      let opened = false;
+      sock.binaryType = "arraybuffer";
+      sock.onopen = () => {
+        if (sock !== ws) return;
+        opened = true; everOpened = true; failsBeforeOpen = 0;
+        flush();
+        setStatus("Live · Deepgram + " + engineLabel(), true);
+      };
+      sock.onmessage = ev => {
+        if (sock !== ws) return;
         let m; try { m = JSON.parse(ev.data); } catch { return; }
         if (m.type === "Results") {
           const t = (m.channel?.alternatives?.[0]?.transcript || "").trim();
-          if (m.is_final) onFinalFragment(t);
-          else onInterim(t);
+          if (m.is_final) onFinalFragment(t); else if (!closing) onInterim(t);
         } else if (m.type === "UtteranceEnd") {
           onPause();
         } else if (m.type === "Error" || m.err_msg) {
-          setStatus("Deepgram: " + (m.description || m.err_msg || "fout"), true);
+          setStatus("Deepgram: " + (m.description || m.err_msg || "fout"), true, true);
         }
       };
-      ws.onclose = ev => {
-        if (closing || !listening) return;
+      sock.onerror = () => {};
+      sock.onclose = ev => {
+        if (sock !== ws) return;
+        if (closing) { onPause(); return; }         // laatste woorden na Stop netjes afronden
+        if (!listening) return;
         if (ev.code === 1008 || ev.code === 4001 || ev.code === 4008) {
-          stopAll(); setStatus("Deepgram weigerde: " + (ev.reason || "controleer je sleutel en tegoed"));
-          return;
+          return fatal("Deepgram weigerde: " + (ev.reason || "controleer je sleutel en tegoed"));
         }
-        // Verbinding kort weg (bijv. wisselen van wifi naar 4G): direct opnieuw verbinden.
-        retry++;
-        setStatus("Verbinding herstellen…", true);
-        setTimeout(() => { if (listening) connect(); }, Math.min(500 * retry, 4000));
+        if (!opened) {
+          failsBeforeOpen++;
+          if (!everOpened && failsBeforeOpen >= 3) {
+            return fatal("Deepgram weigert de verbinding. Controleer je sleutel en tegoed (Instellingen → Test alles).");
+          }
+        }
+        setStatus(navigator.onLine === false ? "Geen internet, wacht op verbinding…" : "Verbinding herstellen…", true);
+        retryTimer = setTimeout(() => { if (listening && !closing) connect(); }, Math.min(400 * (failsBeforeOpen + 1), 3000));
       };
-      ws.onerror = () => {};
     }
 
     return {
-      name: "Deepgram",
       async start() {
         if (!$("dgKey").value.trim()) throw new Error("vul eerst je Deepgram-sleutel in bij Instellingen");
         stream = await navigator.mediaDevices.getUserMedia({
           audio: { channelCount: 1, echoCancellation: false, noiseSuppression: true, autoGainControl: true }
         });
+        if (closing) { stream.getTracks().forEach(t => t.stop()); return; }
         const AC = window.AudioContext || window.webkitAudioContext;
         ctx = new AC();
-        await ctx.resume();
+        try { await ctx.resume(); } catch {}
         source = ctx.createMediaStreamSource(stream);
-        proc = ctx.createScriptProcessor(4096, 1, 1);
-        mute = ctx.createGain(); mute.gain.value = 0;
-        proc.onaudioprocess = e => {
-          const data = e.inputBuffer.getChannelData(0);
-          let peak = 0; for (let i = 0; i < data.length; i += 64) peak = Math.max(peak, Math.abs(data[i]));
+        const onChunk = data => {
+          let peak = 0; for (let i = 0; i < data.length; i += 32) { const v = Math.abs(data[i]); if (v > peak) peak = v; }
           levelBar.style.height = Math.min(100, peak * 160) + "%";
-          if (ws && ws.readyState === 1) ws.send(downsample(data, ctx.sampleRate).buffer);
+          sendAudio(downsample(data, ctx.sampleRate));
         };
-        source.connect(proc); proc.connect(mute); mute.connect(ctx.destination);
-        closing = false;
+        let worklet = false;
+        if (ctx.audioWorklet && window.AudioWorkletNode) {
+          try {
+            const url = URL.createObjectURL(new Blob([WORKLET_SRC], { type: "application/javascript" }));
+            await ctx.audioWorklet.addModule(url);
+            URL.revokeObjectURL(url);
+            node = new AudioWorkletNode(ctx, "cap");
+            node.port.onmessage = e => onChunk(e.data);
+            worklet = true;
+          } catch {}
+        }
+        if (!worklet) {
+          node = ctx.createScriptProcessor(4096, 1, 1);
+          node.onaudioprocess = e => onChunk(e.inputBuffer.getChannelData(0));
+        }
+        sink = ctx.createGain(); sink.gain.value = 0;
+        source.connect(node); node.connect(sink); sink.connect(ctx.destination);
+        // iOS pauzeert audio bij telefoontjes/Siri: automatisch hervatten.
+        ctx.onstatechange = () => { if (listening && !closing && ctx.state !== "running" && ctx.state !== "closed") ctx.resume().catch(() => {}); };
+        stream.getAudioTracks().forEach(t => { t.onended = () => { if (listening && !closing) onMicLost(); }; });
+        if (closing) return;
         connect();
       },
       stop() {
+        if (closing) return;
         closing = true;
-        try { ws && ws.readyState === 1 && ws.send(JSON.stringify({ type: "CloseStream" })); } catch {}
-        setTimeout(() => { try { ws && ws.close(); } catch {} }, 800);
-        try { proc && proc.disconnect(); source && source.disconnect(); } catch {}
+        clearTimeout(retryTimer);
+        const sock = ws;
+        try { sock && sock.readyState === 1 && sock.send(JSON.stringify({ type: "CloseStream" })); } catch {}
+        setTimeout(() => { try { sock && sock.close(); } catch {} }, 1500);
+        try { node && node.disconnect(); source && source.disconnect(); sink && sink.disconnect(); } catch {}
+        try { node && node.port && (node.port.onmessage = null); } catch {}
         try { stream && stream.getTracks().forEach(t => t.stop()); } catch {}
-        try { ctx && ctx.close(); } catch {}
+        try { ctx && ctx.state !== "closed" && ctx.close(); } catch {}
         levelBar.style.height = "0";
       },
-      resume() { try { ctx && ctx.state !== "running" && ctx.resume(); } catch {} },
-      test() {
-        return new Promise((resolve, reject) => {
-          const key = $("dgKey").value.trim();
-          if (!key) return reject(new Error("geen Deepgram-sleutel"));
-          const t = new WebSocket("wss://api.deepgram.com/v1/listen?model=nova-3&language=" + encodeURIComponent($("srcLang").value) + "&encoding=linear16&sample_rate=16000", ["token", key]);
-          const timer = setTimeout(() => { try { t.close(); } catch {} reject(new Error("geen antwoord van Deepgram")); }, 8000);
-          t.onopen = () => { clearTimeout(timer); try { t.send(JSON.stringify({ type: "CloseStream" })); t.close(); } catch {} resolve(); };
-          t.onclose = ev => { clearTimeout(timer); reject(new Error("Deepgram weigerde (" + (ev.reason || "sleutel, tegoed of taal") + ")")); };
-        });
-      }
+      resume() { try { ctx && ctx.state !== "running" && ctx.state !== "closed" && ctx.resume(); } catch {} },
+      micAlive() { return !!stream && stream.getAudioTracks().some(t => t.readyState === "live"); }
     };
+  }
+
+  function testDeepgram() {
+    return new Promise((resolve, reject) => {
+      const key = $("dgKey").value.trim();
+      if (!key) return reject(new Error("geen Deepgram-sleutel"));
+      let done = false;
+      const t = new WebSocket("wss://api.deepgram.com/v1/listen?model=nova-3&language=" + encodeURIComponent($("srcLang").value) + "&encoding=linear16&sample_rate=16000", ["token", key]);
+      const timer = setTimeout(() => { if (done) return; done = true; try { t.close(); } catch {} reject(new Error("geen antwoord van Deepgram")); }, 8000);
+      t.onopen = () => { if (done) return; done = true; clearTimeout(timer); try { t.send(JSON.stringify({ type: "CloseStream" })); t.close(); } catch {} resolve(); };
+      t.onclose = ev => { if (done) return; done = true; clearTimeout(timer); reject(new Error("Deepgram weigerde (" + (ev.reason || "sleutel, tegoed of taal") + ")")); };
+    });
   }
 
   // ---------- Methode 2: browser-spraakherkenning (gratis, met pauzes) ----------
   function browserEngine() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
     const LOCALE = { "ar": "ar-SA", "ar-MA": "ar-MA", "ar-EG": "ar-EG", "ar-SA": "ar-SA", "nl": "nl-NL" };
-    let rec, pending = "", timer = null;
+    let rec, pending = "", timer = null, stopped = false;
 
     const commit = () => { const t = pending.trim(); pending = ""; if (t) { onFinalFragment(t); onPause(); } else onInterim(""); };
     const finish = () => { clearTimeout(timer); try { rec.stop(); } catch { commit(); } };
 
     return {
-      name: "browser",
       async start() {
-        if (!SR) throw new Error("deze browser heeft geen spraakherkenning; gebruik Deepgram");
+        if (!SR) throw new Error("deze browser heeft geen spraakherkenning; kies Deepgram");
         rec = new SR();
         rec.lang = LOCALE[$("srcLang").value] || "ar-SA";
         rec.continuous = !isIOS;
         rec.interimResults = true;
-        rec.onstart = () => setStatus("Luistert · browser + " + (useClaude() ? "Claude" : "MyMemory"), true);
+        rec.onstart = () => setStatus("Luistert · browser + " + engineLabel(), true);
         rec.onresult = e => {
-          let live = "";
+          let cur = "";
           for (let i = e.resultIndex; i < e.results.length; i++) {
             const r = e.results[i];
             if (r.isFinal) { onFinalFragment(r[0].transcript); onPause(); pending = ""; }
-            else live += r[0].transcript;
+            else cur += r[0].transcript;
           }
-          pending = live; onInterim(live);
+          pending = cur; onInterim(cur);
           clearTimeout(timer);
-          if (live) { if (live.length > 280) finish(); else timer = setTimeout(finish, 1300); }
+          if (cur) { if (cur.length > 280) finish(); else timer = setTimeout(finish, 1300); }
         };
         rec.onerror = e => {
-          if (e.error === "not-allowed" || e.error === "service-not-allowed") {
-            stopAll(); setStatus("Geen microfoontoegang");
-          }
+          if (e.error === "not-allowed" || e.error === "service-not-allowed") { stopAll(); setStatus("Geen microfoontoegang", false, true); }
         };
         rec.onend = () => {
           clearTimeout(timer); commit();
-          if (listening) setTimeout(() => { try { rec.start(); } catch {} }, isIOS ? 0 : 250);
+          if (listening && !stopped) setTimeout(() => { if (listening && !stopped) { try { rec.start(); } catch {} } }, isIOS ? 0 : 250);
         };
         rec.start();
       },
-      stop() { clearTimeout(timer); try { rec && rec.stop(); } catch {} },
-      resume() {}
+      stop() { stopped = true; clearTimeout(timer); try { rec && rec.stop(); } catch {} },
+      resume() {},
+      micAlive() { return true; }
     };
   }
 
   // ---------- Start / stop ----------
   const pickEngine = () => ($("stt").value === "deepgram" ? deepgramEngine() : browserEngine());
+  const startError = e => e && e.name === "NotAllowedError"
+    ? "geen toegang tot de microfoon (iPhone-instellingen → Safari → Microfoon)"
+    : (e && e.message) || String(e);
 
-  async function start() {
-    listening = true;
-    toggle.textContent = "Stop luisteren"; toggle.classList.add("rec");
-    interim.className = "empty"; interim.textContent = "Luistert… de eerste zin verschijnt zodra de imam begint.";
-    activeEngine = pickEngine();
-    try {
-      await activeEngine.start();
-    } catch (e) {
-      stopAll();
-      const msg = e && e.name === "NotAllowedError" ? "geen toegang tot de microfoon (Instellingen → Safari → Microfoon)" : (e.message || String(e));
-      setStatus("Kan niet starten: " + msg);
+  async function runEngine() {
+    const my = session, eng = pickEngine();
+    activeEngine = eng;
+    try { await eng.start(); }
+    catch (e) {
+      if (my !== session) return;
+      stopAll(); setStatus("Kan niet starten: " + startError(e), false, true);
       return;
     }
-    try { wakeLock = await navigator.wakeLock?.request("screen"); } catch {}
+    // Is er intussen op Stop gedrukt? Dan deze (laat opgestarte) microfoon meteen weer sluiten.
+    if (my !== session || !listening) eng.stop();
+  }
+
+  async function start() {
+    session++;
+    listening = true; micLost = false;
+    toggle.textContent = "Stop luisteren"; toggle.classList.add("rec");
+    interim.textContent = "Luistert… de eerste zin verschijnt zodra de imam begint.";
+    setStatus("Microfoon starten…", true);
+    keepAwake.acquire();
+    await runEngine();
+  }
+
+  async function restartEngine() {
+    if (!listening) return;
+    session++;
+    try { activeEngine && activeEngine.stop(); } catch {}
+    activeEngine = null;
+    onPause();
+    micLost = false;
+    setStatus("Opnieuw starten…", true);
+    await runEngine();
+  }
+
+  function onMicLost() {
+    micLost = true;
+    setStatus("Microfoon onderbroken door iPhone, wordt hervat…", true, true);
+    if (document.visibilityState === "visible") restartEngine();
   }
 
   function stopAll() {
-    listening = false;
+    session++;
+    listening = false; micLost = false;
     try { activeEngine && activeEngine.stop(); } catch {}
     activeEngine = null;
     toggle.textContent = "Start luisteren"; toggle.classList.remove("rec");
-    try { wakeLock && wakeLock.release(); } catch {}
-    wakeLock = null;
+    toLive.classList.remove("show");
+    keepAwake.release();
     resetLive();
-    if (statusEl.classList.contains("live")) setStatus("Gestopt");
+    setStatus("Gestopt");
   }
 
   toggle.onclick = () => (listening ? stopAll() : start());
 
-  document.addEventListener("visibilitychange", async () => {
-    if (document.visibilityState === "visible" && listening) {
-      activeEngine && activeEngine.resume();
-      if (!wakeLock) { try { wakeLock = await navigator.wakeLock?.request("screen"); } catch {} }
-    }
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible" || !listening) return;
+    keepAwake.acquire();
+    if (micLost || (activeEngine && !activeEngine.micAlive())) restartEngine();
+    else activeEngine && activeEngine.resume();
   });
+  window.addEventListener("online", () => { if (listening && /internet/.test(statusEl.textContent)) setStatus("Verbinding herstellen…", true); });
 
   // ---------- Test ----------
   $("testBtn").onclick = async () => {
@@ -651,10 +814,10 @@ ${RULES}`;
     const lines = [];
     try {
       const r = await translate("الحمد لله رب العالمين", "ar", $("tgtLang").value);
-      lines.push("✓ " + (useClaude() ? "Claude" : "MyMemory") + ": " + r);
+      lines.push("✓ " + engineLabel() + ": " + r);
     } catch (e) { lines.push("✗ Vertaling: " + e.message); }
     if ($("stt").value === "deepgram") {
-      try { await deepgramEngine().test(); lines.push("✓ Deepgram verbonden"); }
+      try { await testDeepgram(); lines.push("✓ Deepgram verbonden"); }
       catch (e) { lines.push("✗ " + e.message); }
     }
     out.textContent = lines.join("  ·  ");
@@ -663,23 +826,30 @@ ${RULES}`;
 
   // ---------- Wissen & downloaden ----------
   $("clearBtn").onclick = () => {
-    if (!history.length || confirm("Alle tekst wissen?")) {
-      history.length = 0; if (live) { live.row.remove(); live = null; }
-      feed.querySelectorAll(".row").forEach(r => r.remove());
-      interim.style.display = "";
-    }
+    if (!history.length && !live) return;
+    if (!confirm("Alle tekst wissen?")) return;
+    history.length = 0;
+    if (live) { clearTimeout(live.timer); try { live.ctrl && live.ctrl.abort(); } catch {} live.done = true; live = null; }
+    feed.querySelectorAll(".row").forEach(r => r.remove());
+    interim.style.display = "";
   };
 
-  $("saveBtn").onclick = () => {
+  $("saveBtn").onclick = async () => {
     if (!history.length) return alert("Er is nog geen khutba-tekst om te downloaden. Je sleutels bewaar je onder Instellingen.");
     const body = history.map(h => `[${h.time.toLocaleTimeString("nl-NL")}]\n${h.ar}\n${h.nl || "(geen vertaling)"}\n`).join("\n");
     const vertaling = history.map(h => h.nl).filter(Boolean).join(" ");
-    const blob = new Blob([`Khutba – ${new Date().toLocaleDateString("nl-NL")}\n\nVOLLEDIGE VERTALING\n${vertaling}\n\nPER ZIN\n${body}`], { type: "text/plain" });
+    const name = `khutba-${new Date().toISOString().slice(0, 10)}.txt`;
+    const text = `Khutba – ${new Date().toLocaleDateString("nl-NL")}\n\nVOLLEDIGE VERTALING\n${vertaling}\n\nPER ZIN\n${body}`;
+    // Op iPhone werkt het deelmenu (Bewaar in Bestanden, WhatsApp, Notities…) het prettigst.
+    try {
+      const file = new File([text], name, { type: "text/plain" });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: "Khutba" }); return; }
+    } catch (e) { if (e && e.name === "AbortError") return; }
     const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `khutba-${new Date().toISOString().slice(0, 10)}.txt`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    a.href = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+    a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   };
 })();
 </script>
